@@ -6,7 +6,10 @@ use datafusion_common::tree_node::TreeNode;
 use std::sync::Arc;
 
 mod planprinter;
+mod join_graph;
+
 use planprinter::PlanStringBuilder;
+use join_graph::JoinGraph;
 
 async fn setup_tables() -> Result<SessionContext, Box<dyn std::error::Error>> {
     // Create a DataFusion context
@@ -75,8 +78,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Build the joins step by step
     let joined_df = t1
         .join(t2, JoinType::Inner, &["a1"], &["a2"], None)?
-        .join(t3, JoinType::Left, &["a2"], &["a3"], None)?
-        .join(t4, JoinType::Left, &["a1"], &["a4"], None)?
+        .join(t3, JoinType::Inner, &["a2"], &["a3"], None)?
+        .join(t4, JoinType::Inner, &["a1"], &["a4"], None)?
         .select(vec![lit(1)])?; // SELECT 1
     
     let logical_plan = joined_df.into_optimized_plan()?;
@@ -89,6 +92,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nCustom formatted plan:");
     let custom_output = custom_print(&logical_plan)?;
     println!("{}", custom_output);
+    
+    // Extract and display join graph
+    println!("\nJoin Graph:");
+    let join_graph = JoinGraph::from_plan(&logical_plan)?;
+    println!("Join expressions: {:?}", join_graph.join_expressions);
+    println!("Sources count: {}", join_graph.sources.len());
+    for (i, source) in join_graph.sources.iter().enumerate() {
+        println!("Source {}: {:?}", i, std::mem::discriminant(source));
+    }
     
     // println!("{}", logical_plan.display_pg_json());
 
