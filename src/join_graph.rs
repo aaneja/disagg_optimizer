@@ -68,7 +68,7 @@ impl TreeNodeVisitor<'_> for JoinGraphVisitor {
             _ => {
                 // For any other plan node type, add it to sources
                 self.join_graph.sources.push(node.clone());
-                // Stop traversing children since we've captured this source
+                // Stop traversing children since we've captured this source - THIS NEEDS TO BE FIXED
                 Ok(TreeNodeRecursion::Continue)
             }
         }

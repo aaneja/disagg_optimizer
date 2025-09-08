@@ -8,8 +8,9 @@ use std::sync::Arc;
 mod planprinter;
 mod join_graph;
 
+pub mod cascades;
+
 use planprinter::PlanStringBuilder;
-use join_graph::JoinGraph;
 
 async fn setup_tables() -> Result<SessionContext, Box<dyn std::error::Error>> {
     // Create a DataFusion context
@@ -60,14 +61,14 @@ fn custom_print(plan: &LogicalPlan) -> Result<String, Box<dyn std::error::Error>
     Ok(builder.get_output())
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Creating DataFusion logical plan with 4 tables and joins...");
 
     let ctx = setup_tables().await?;
 
     // Step 2: Create a logical plan that emulates:
-    // SELECT 1 FROM t1 inner join t2 on a1=a2 left join t3 on a2=a3 left join t4 on a1=a4
+    // SELECT 1 FROM t1 inner join t2 on a1=a2 inner join t3 on a2=a3 inner join t4 on a1=a4
     // Using DataFusion DataFrame API
     
     let t1 = ctx.table("t1").await?;
@@ -79,7 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let joined_df = t1
         .join(t2, JoinType::Inner, &["a1"], &["a2"], None)?
         .join(t3, JoinType::Inner, &["a2"], &["a3"], None)?
-        .join(t4, JoinType::Inner, &["a1"], &["a4"], None)?
+        .join(t4, JoinType::Inner, &["a3"], &["a4"], None)?
         .select(vec![lit(1)])?; // SELECT 1
     
     let logical_plan = joined_df.into_optimized_plan()?;
@@ -94,13 +95,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", custom_output);
     
     // Extract and display join graph
-    println!("\nJoin Graph:");
-    let join_graph = JoinGraph::from_plan(&logical_plan)?;
-    println!("Join expressions: {:?}", join_graph.join_expressions);
-    println!("Sources count: {}", join_graph.sources.len());
-    for (i, source) in join_graph.sources.iter().enumerate() {
-        println!("Source {}: {:?}", i, std::mem::discriminant(source));
-    }
+    // println!("\nJoin Graph:");
+    // let join_graph = JoinGraph::from_plan(&logical_plan)?;
+    // println!("Join expressions: {:?}", join_graph.join_expressions);
+    // println!("Sources count: {}", join_graph.sources.len());
+    // for (i, source) in join_graph.sources.iter().enumerate() {
+    //     println!("Source {}: {:?}", i, std::mem::discriminant(source));
+    // }
     
     // println!("{}", logical_plan.display_pg_json());
 

@@ -1,0 +1,144 @@
+use super::group::Group;
+use super::mexpr::MExpr;
+use super::operator::Operator;
+use std::rc::Rc;
+use std::cell::RefCell;
+use ahash::AHashMap;
+
+#[derive(Debug)]
+pub struct RuleMatcher {
+    // No fields needed as memo is passed as parameter
+}
+
+impl RuleMatcher {
+    pub fn new() -> Self {
+        Self {}
+    }
+
+    /// Check and apply rules to a Group.
+    /// 1. Produce logically equivalent MExprs and generate new tasks for them
+    /// 2. For every new Group for the generated MExpr, check if already have it explored in the memo, if so get the cheapest plan from it
+    /// 3. Add any not previously explored groups to TasksQueue
+    /// 4. Mark group as explored - note a cycle can occur where child tasks generate the parent ?? If so detect this cycle and fix it
+    pub fn explore(&mut self, group: Rc<RefCell<Group>>, memo: &mut AHashMap<u64, Rc<RefCell<Group>>>) {
+        // Process all unexplored expressions
+        while let Some(mexpr) = {
+            let group_borrowed = group.borrow_mut();
+            let mut unexplored = group_borrowed.unexplored_equivalent_logical_mexprs.borrow_mut();
+            unexplored.pop_front()
+        } {
+            // First explore all children of this expression to completion
+            for operand in mexpr.operands() {
+                self.explore(Rc::clone(operand), memo);
+            }
+
+            // Rule transformations can now match and bind against child groups correctly
+            self.apply_transformation_rules(&group, &mexpr, memo);
+
+            // This Expression is now explored
+            group.borrow_mut().equivalent_logical_mexprs.borrow_mut().push(mexpr);
+        }
+
+        // Mark group as explored - need unsafe for interior mutability
+        // Why cant we use set_explored on Group instead ?
+        group.borrow_mut().explored = true;
+    }
+
+    fn apply_transformation_rules(&mut self, group: &Rc<RefCell<Group>>, mexpr: &MExpr, memo: &mut AHashMap<u64, Rc<RefCell<Group>>>) {
+        // Replace below with a true rule matcher/binder/transformer
+        // For now we simply apply join commutativity & associativity rules since we're only considering IJ reordering
+
+        {
+            let transformed = self.apply_join_commutativity(mexpr);
+            self.add_new_mexprs(group, transformed, "Join Commutativity", memo);
+        }
+
+        {
+            let transformed = self.apply_join_associativity(mexpr, memo);
+            self.add_new_mexprs(group, transformed, "Join Associativity", memo);
+        }
+    }
+
+    fn apply_join_commutativity(&self, mexpr: &MExpr) -> Vec<MExpr> {
+        if mexpr.op() == Operator::InnerJoin && mexpr.operands().len() == 2 {
+            let left = Rc::clone(&mexpr.operands()[0]);
+            let right = Rc::clone(&mexpr.operands()[1]);
+            vec![MExpr::build_with(Operator::InnerJoin, vec![right, left])]
+        } else {
+            Vec::new() // Empty vector equivalent to ImmutableList.of()
+        }
+    }
+
+    fn apply_join_associativity(&self, mexpr: &MExpr, memo: &mut AHashMap<u64, Rc<RefCell<Group>>>) -> Vec<MExpr> {
+        if mexpr.op() == Operator::InnerJoin && mexpr.operands().len() == 2 {
+            let mut result = Vec::new();
+
+            let left = &mexpr.operands()[0];
+            let right = &mexpr.operands()[1];
+
+            let left_borrowed = left.borrow();
+            let left_equivalent = left_borrowed.equivalent_logical_mexprs.borrow();
+            let left_inner_joins: Vec<MExpr> = left_equivalent
+                .iter()
+                .filter(|x| x.op() == Operator::InnerJoin)
+                .cloned()
+                .collect();
+
+            for left_mexpr in left_inner_joins {
+                if left_mexpr.operands().len() == 2 {
+                    let left_l = Rc::clone(&left_mexpr.operands()[0]);
+                    let left_r = Rc::clone(&left_mexpr.operands()[1]);
+
+                    let new_right = self.gen_or_get_from_memo(
+                        MExpr::build_with(Operator::InnerJoin, vec![left_r, Rc::clone(right)]),
+                        memo
+                    );
+                    result.push(MExpr::build_with(Operator::InnerJoin, vec![left_l, new_right]));
+                }
+            }
+
+            result
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// For each transformed MExpr :
+    /// 1. Check if it is already in the memo, if not add it to the memo with an association to the current group
+    /// 2. And add it to the unexplored list
+    fn add_new_mexprs(&mut self, group: &Rc<RefCell<Group>>, transformed: Vec<MExpr>, _rule_name: &str, memo: &mut AHashMap<u64, Rc<RefCell<Group>>>) {
+        for new_expr in transformed {
+            let hash = new_expr.hash();
+            if !memo.contains_key(&hash) {
+                // This is a newly generated transformation since it's missing from the memo
+                memo.insert(hash, Rc::clone(group));
+                group.borrow_mut().unexplored_equivalent_logical_mexprs.borrow_mut().push_back(new_expr);
+            }
+
+            // The transformed expression has been seen before, and it either
+            // 1. Is already explored - no action needed here
+            // 2. Added in the unexplored queue - no action needed here either
+            // This way we avoid getting stuck in a loop since an already generated transformation is not re-explored
+        }
+    }
+
+    fn gen_or_get_from_memo(&self, plan_mexpr: MExpr, memo: &mut AHashMap<u64, Rc<RefCell<Group>>>) -> Rc<RefCell<Group>> {
+        let hash = plan_mexpr.hash();
+
+        if let Some(group) = memo.get(&hash) {
+            return Rc::clone(group);
+        }
+
+        // This subplan we have is either
+        // 1. A brand-new plan with no equivalent logical plan that we've seen so far
+        // or 2. We have generated a sub-plan of an existing Group but that group has not been explored so far
+
+        let new_group = Group::from_mexpr(plan_mexpr);
+        memo.insert(hash, Rc::clone(&new_group));
+        new_group
+    }
+
+    pub fn test_match(&self, _match_against: &MExpr) -> bool {
+        true
+    }
+}

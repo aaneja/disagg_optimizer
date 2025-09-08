@@ -1280,10 +1280,15 @@ dependencies = [
 name = "disagg_optimizer"
 version = "0.1.0"
 dependencies = [
+ "ahash",
  "datafusion",
  "datafusion-common",
  "datafusion-expr",
+ "murmur3",
+ "once_cell",
+ "serde",
  "tokio",
+ "xxhash-rust",
 ]
 
 [[package]]
@@ -1931,6 +1936,12 @@ dependencies = [
  "wasi 0.11.1+wasi-snapshot-preview1",
  "windows-sys 0.59.0",
 ]
+
+[[package]]
+name = "murmur3"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9252111cf132ba0929b6f8e030cac2a24b507f3a4d6db6fb2896f27b354c714b"
 
 [[package]]
 name = "num"
@@ -3055,6 +3066,12 @@ name = "writeable"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ea2f10b9bb0928dfb1b42b65e1f9e36f7f54dbdf08457afefb38afcdec4fa2bb"
+
+[[package]]
+name = "xxhash-rust"
+version = "0.8.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fdd20c5420375476fbd4394763288da7eb0cc0b8c11deed431a91562af7335d3"
 
 [[package]]
 name = "xz2"

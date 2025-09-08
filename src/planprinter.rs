@@ -1,5 +1,6 @@
-use datafusion_expr::LogicalPlan;
+use crate::cascades::cascades::Cascades;
 use datafusion_common::tree_node::{TreeNodeRecursion, TreeNodeVisitor};
+use datafusion_expr::LogicalPlan;
 
 // Custom string builder for formatting the logical plan
 pub struct PlanStringBuilder {
@@ -63,4 +64,11 @@ impl TreeNodeVisitor<'_> for PlanStringBuilder {
         self.decrease_depth();
         Ok(TreeNodeRecursion::Continue)
     }
+}
+
+pub fn print_cascades_memo(join_nodes: &str) {
+    let mut cascades = Cascades::new();
+    let root_group = cascades.seed_memo(join_nodes);
+    cascades.optimize(root_group);
+    cascades.print_memo();
 }
