@@ -4,6 +4,7 @@ use super::operator::Operator;
 use std::rc::Rc;
 use std::cell::RefCell;
 use ahash::AHashMap;
+use datafusion_expr::LogicalPlan;
 
 #[derive(Debug)]
 pub struct RuleMatcher {
@@ -60,17 +61,18 @@ impl RuleMatcher {
     }
 
     fn apply_join_commutativity(&self, mexpr: &MExpr) -> Vec<MExpr> {
-        if mexpr.op() == Operator::InnerJoin && mexpr.operands().len() == 2 {
+        if let LogicalPlan::Join(join_node) = &*mexpr.op().borrow() {
             let left = Rc::clone(&mexpr.operands()[0]);
             let right = Rc::clone(&mexpr.operands()[1]);
-            vec![MExpr::build_with(Operator::InnerJoin, vec![right, left])]
+            vec![MExpr::build_with_node(Rc::new(RefCell::new(LogicalPlan::Join(join_node.clone()))), vec![right, left])]
         } else {
             Vec::new() // Empty vector equivalent to ImmutableList.of()
         }
     }
 
+    // (A ⋈ B) ⋈ C  ==>  A ⋈ (B ⋈ C)
     fn apply_join_associativity(&self, mexpr: &MExpr, memo: &mut AHashMap<u64, Rc<RefCell<Group>>>) -> Vec<MExpr> {
-        if mexpr.op() == Operator::InnerJoin && mexpr.operands().len() == 2 {
+        if let LogicalPlan::Join(_) = &*mexpr.op().borrow() {
             let mut result = Vec::new();
 
             let left = &mexpr.operands()[0];
@@ -78,9 +80,11 @@ impl RuleMatcher {
 
             let left_borrowed = left.borrow();
             let left_equivalent = left_borrowed.equivalent_logical_mexprs.borrow();
+            
+            // Check if left node is also a join
             let left_inner_joins: Vec<MExpr> = left_equivalent
                 .iter()
-                .filter(|x| x.op() == Operator::InnerJoin)
+                .filter(|x| matches!(*x.op().borrow(), LogicalPlan::Join(_)))
                 .cloned()
                 .collect();
 
@@ -90,9 +94,11 @@ impl RuleMatcher {
                     let left_r = Rc::clone(&left_mexpr.operands()[1]);
 
                     let new_right = self.gen_or_get_from_memo(
+                        // Need to figure out the equi-join clause between the left_r and right, if it exists and generate a new join node
                         MExpr::build_with(Operator::InnerJoin, vec![left_r, Rc::clone(right)]),
                         memo
                     );
+                    // Need to figure out the equi-join clause between the left_r and right. This should exist
                     result.push(MExpr::build_with(Operator::InnerJoin, vec![left_l, new_right]));
                 }
             }

@@ -93,11 +93,8 @@ impl MExpr {
         modified_node.hash(&mut hasher);
 
         for operand in &operands {
-            if let Some(ref source_node) = operand.borrow().source_node {
-                hasher.update(source_node.node_id.as_bytes());
-            } else if operands.len() > 0 {
-                hasher.update(operand.borrow().get_group_hash().to_le_bytes().as_ref());
-            }
+            // All nodes, including the TableScan node will be a group
+             hasher.update(operand.borrow().get_group_hash().to_le_bytes().as_ref());
         }
 
         let hash = hasher.digest();
