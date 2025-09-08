@@ -5,6 +5,7 @@ use super::operator::Operator;
 use std::rc::Rc;
 use std::cell::RefCell;
 use ahash::AHashMap; // Using ahash for better performance
+use datafusion_expr::LogicalPlan;
 
 #[derive(Debug)]
 pub struct Cascades {
@@ -98,5 +99,25 @@ impl Cascades {
     // Getter for memo (equivalent to @Getter annotation in Java)
     pub fn get_memo(&self) -> &AHashMap<u64, Rc<RefCell<Group>>> {
         &self.memo
+    }
+
+    pub fn gen_group_logical_plan(&mut self, plan: Rc<RefCell<LogicalPlan>>) -> Rc<RefCell<Group>> {
+        let operands: Vec<Rc<RefCell<Group>>> = match &*plan.borrow() {
+            LogicalPlan::Projection(proj) => vec![
+                self.gen_group_logical_plan(Rc::new(RefCell::new(proj.input.as_ref().clone())))
+            ],
+            LogicalPlan::Filter(filter) => vec![
+                self.gen_group_logical_plan(Rc::new(RefCell::new(filter.input.as_ref().clone())))
+            ],
+            LogicalPlan::Join(join) => vec![
+                self.gen_group_logical_plan(Rc::new(RefCell::new(join.left.as_ref().clone()))),
+                self.gen_group_logical_plan(Rc::new(RefCell::new(join.right.as_ref().clone()))),
+            ],
+            LogicalPlan::TableScan(_) => vec![],
+            _ => unimplemented!("Support for this LogicalPlan variant is not yet implemented"),
+        };
+
+        let mexpr = MExpr::build_with_node(plan, operands);
+        self.gen_or_get_from_memo(mexpr)
     }
 }
