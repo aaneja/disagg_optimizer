@@ -33,7 +33,7 @@ impl MExpr {
         Self {
             hash,
             cost: 0, // Default cost
-            op: Rc::new(RefCell::new(LogicalPlan::TableScan(()))), // Placeholder, will be updated in build_with_node
+            op: Rc::new(RefCell::new(LogicalPlan::default())), // Placeholder, since this method would be replaced anyhow
             operands,
             canonicalized: hash.to_string(),
         }
@@ -41,22 +41,23 @@ impl MExpr {
 
     pub fn build_with_node(node: Rc<RefCell<LogicalPlan>>, operands: Vec<Rc<RefCell<Group>>>) -> Self {
         let mut hasher = Xxh3::new(); // Create a new Xxh3 hasher
-        node.borrow().hash(&mut hasher); // Hash the LogicalPlan node directly
+        node.borrow().hash(&mut hasher); // Hash the LogicalPlan node directly, this can be improved by taking only relevant struct fields and ignoring the parent
 
-        for operand in &operands {
-            if let Some(ref source_node) = operand.borrow().source_node {
-                hasher.update(source_node.node_id.as_bytes());
-            } else if operands.len() > 0 {
-                hasher.update(operand.borrow().get_group_hash().to_le_bytes().as_ref());
-            }
-        }
+        // Commented below since we rely on the LogicalPlan's hash
+        // for operand in &operands {
+        //     if let Some(ref source_node) = operand.borrow().source_node {
+        //         hasher.update(source_node.node_id.as_bytes());
+        //     } else if operands.len() > 0 {
+        //         hasher.update(operand.borrow().get_group_hash().to_le_bytes().as_ref());
+        //     }
+        // }
 
         let hash = hasher.digest();
 
         Self {
             hash,
             cost: 0, // Default cost
-            op: node, // Directly use the provided LogicalPlan node
+            op: node, 
             operands,
             canonicalized: hash.to_string(),
         }

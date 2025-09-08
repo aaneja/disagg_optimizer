@@ -1,7 +1,9 @@
+use datafusion_expr::LogicalPlan;
+
 use super::group::Group;
 use super::operator::Operator;
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::rc::Rc;
 
 /// Get all possible trees for a given group.
 pub fn get_all_possible_trees(group: Rc<RefCell<Group>>) -> Vec<String> {
@@ -9,7 +11,7 @@ pub fn get_all_possible_trees(group: Rc<RefCell<Group>>) -> Vec<String> {
 
     for mexpr in group.borrow().equivalent_logical_mexprs.borrow().iter() {
         let op = mexpr.op();
-        if op == Operator::Source {
+        if let LogicalPlan::TableScan(_) = &*op.borrow() {
             if let Some(operand) = mexpr.operands().get(0) {
                 if let Some(source_node) = operand.borrow().source_node.as_ref() {
                     let source_str = source_node.node_id.clone();
@@ -59,12 +61,18 @@ pub fn get_all_possible_trees_count(group: Rc<RefCell<Group>>) -> u64 {
     let mut output = 0;
 
     // Verify that the group is explored and has no unexplored logical expressions
-    assert!(group.borrow().unexplored_equivalent_logical_mexprs.borrow().is_empty());
+    assert!(
+        group
+            .borrow()
+            .unexplored_equivalent_logical_mexprs
+            .borrow()
+            .is_empty()
+    );
     assert!(group.borrow().explored);
 
     for mexpr in group.borrow().equivalent_logical_mexprs.borrow().iter() {
         let op = mexpr.op();
-        if op == Operator::Source {
+        if let LogicalPlan::TableScan(_) = &*op.borrow() {
             return 1;
         }
 
