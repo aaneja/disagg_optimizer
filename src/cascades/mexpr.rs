@@ -1,8 +1,8 @@
 use super::group::Group;
 use super::operator::Operator;
-use datafusion_common::DFSchema;
+use datafusion_common::{DFSchema};
 use datafusion_expr::logical_plan::EmptyRelation; // Import EmptyRelation struct
-use datafusion_expr::{ LogicalPlan};
+use datafusion_expr::{LogicalPlan};
 use std::cell::RefCell;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
@@ -138,6 +138,31 @@ impl MExpr {
         }
 
         format!("{:?} ( {} )", self.op, operand_strings.join(", "))
+    }
+
+    pub fn get_schema(&self) -> Option<Arc<DFSchema>> {
+        let mut current_node = self.op.borrow().clone();
+
+        loop {
+            match current_node {
+                LogicalPlan::Projection(proj) => return Some(proj.schema),
+                LogicalPlan::Filter(filter) => current_node = (*filter.input).clone(),
+                LogicalPlan::Aggregate(agg) => return Some(agg.schema),
+                LogicalPlan::Join(join) => return Some(join.schema),
+                LogicalPlan::Sort(sort) => current_node = (*sort.input).clone(),
+                LogicalPlan::TableScan(scan) => return Some(scan.projected_schema.clone()),
+                LogicalPlan::Limit(limit) => current_node = (*limit.input).clone(),
+                LogicalPlan::Union(union) => {
+                    if let Some(first_input) = union.inputs.first() {
+                        current_node = (**first_input).clone();
+                    } else {
+                        return None;
+                    }
+                }
+                LogicalPlan::EmptyRelation(empty) => return Some(empty.schema.clone()),
+                _ => return None, // Handle other cases or stop if schema is not found
+            }
+        }
     }
 
     // Getters
