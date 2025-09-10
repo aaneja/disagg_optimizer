@@ -69,9 +69,7 @@ impl Cascades {
         println!("Memo :");
         for (key, value) in &self.memo {
             let sources = if let Some(ref start_expr) = value.borrow().start_expression {
-                start_expr.get_sorted_sources()
-            } else if let Some(ref source_node) = value.borrow().source_node {
-                source_node.node_id.clone()
+                format!("{} ", start_expr.op().borrow().display())
             } else {
                 "Unknown".to_string()
             };

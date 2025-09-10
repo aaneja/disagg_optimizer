@@ -4,8 +4,10 @@ use datafusion::prelude::*;
 use datafusion_expr::logical_plan::LogicalPlanBuilder;
 use datafusion_expr::logical_plan::LogicalPlan;
 use datafusion_common::tree_node::TreeNode;
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
-
+use crate::cascades::cascades::Cascades;
 mod planprinter;
 mod join_graph;
 
@@ -90,7 +92,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // println!("{}", logical_plan.display_indent());
     
     // Print using custom_print method
-    println!("\nCustom formatted plan:");
+    println!("Formatted plan:");
     let custom_output = custom_print(&logical_plan)?;
     println!("{}", custom_output);
     
@@ -104,6 +106,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // }
     
     // println!("{}", logical_plan.display_pg_json());
+
+    //New up a Cascades optimizer and optimize the plan
+    let mut cascades = Cascades::new();
+    let root_group = cascades.gen_group_logical_plan(Rc::new(RefCell::new(logical_plan)));
+
+    println!("Memo before Cascades optimizer start");
+    cascades.print_memo();
+    
+    cascades.optimize(root_group);
+
+    //Print memo stats
+    cascades.print_memo_stats();
+    
 
     Ok(())
 }

@@ -3,10 +3,12 @@ use super::mexpr::MExpr;
 use ahash::AHashMap;
 use datafusion_common::DFSchema;
 use datafusion_common::Result;
+use datafusion_expr_common::operator::Operator;
+
+use datafusion::logical_expr::lit;
 use datafusion_expr::utils::{conjunction, split_conjunction_owned};
 use datafusion_expr::{BinaryExpr, Expr};
 use datafusion_expr::{Join, LogicalPlan};
-use datafusion::logical_expr::lit;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -82,15 +84,12 @@ impl RuleMatcher {
 
     // (A ⋈ B) => (B ⋈ A)
     fn apply_join_commutativity(&self, mexpr: &MExpr) -> Vec<MExpr> {
-        if let LogicalPlan::Join(join_node) = &*mexpr.op().borrow() {
+        if let LogicalPlan::Join(_join_node) = &*mexpr.op().borrow() {
             let left = Rc::clone(&mexpr.operands()[0]);
             let right = Rc::clone(&mexpr.operands()[1]);
-            vec![MExpr::build_with_node(
-                Rc::new(RefCell::new(LogicalPlan::Join(join_node.clone()))),
-                vec![right, left],
-            )]
+            vec![MExpr::build_with_node(mexpr.op(), vec![right, left])]
         } else {
-            Vec::new() 
+            Vec::new()
         }
     }
 
@@ -160,19 +159,58 @@ impl RuleMatcher {
 
             for left_mexpr in left_inner_joins {
                 // Extract overall filter from left_mexpr and mexpr into a single conjunction
-                let left_op = left_mexpr.op();
-                let left_join = match &*left_op.borrow() {
-                    LogicalPlan::Join(join) => join.clone(),
+                // new up an empty vector of expressions
+                let mut join_clause_plus_filters: Vec<Expr> = Vec::new();
+
+                let left_mexpr_holder = left_mexpr.op();
+                let left_op = left_mexpr_holder.borrow();
+                let left_join = match &*left_op {
+                    LogicalPlan::Join(join) => {
+                        // Build a BinaryExpr from join.on
+                        for (left, right) in &join.on {
+                            let binary_expr = BinaryExpr::new(
+                                Box::new(left.clone()),
+                                Operator::Eq,
+                                Box::new(right.clone()),
+                            );
+                            join_clause_plus_filters.push(Expr::BinaryExpr(binary_expr));
+                        }
+
+                        // Add join.filter if it exists
+                        if let Some(filter) = &join.filter {
+                            join_clause_plus_filters.push(filter.clone());
+                        }
+
+                        join
+                    }
                     _ => continue,
                 };
 
-                let current_op = mexpr.op();
-                let current_join = match &*current_op.borrow() {
-                    LogicalPlan::Join(join) => join.clone(),
+                let mexpr_op_holder = mexpr.op();
+                let mexpr_op = mexpr_op_holder.borrow();
+                let current_join = match &*mexpr_op {
+                    LogicalPlan::Join(join) => {
+                        // Build a BinaryExpr from join.on
+                        for (left, right) in &join.on {
+                            let binary_expr = BinaryExpr::new(
+                                Box::new(left.clone()),
+                                Operator::Eq,
+                                Box::new(right.clone()),
+                            );
+                            join_clause_plus_filters.push(Expr::BinaryExpr(binary_expr));
+                        }
+
+                        // Add join.filter if it exists
+                        if let Some(filter) = &join.filter {
+                            join_clause_plus_filters.push(filter.clone());
+                        }
+
+                        join
+                    }
                     _ => continue,
                 };
 
-                let combined_filter = conjunction(left_join.filter.into_iter().chain(current_join.filter)).unwrap_or(lit(true));
+                let combined_filter = conjunction(join_clause_plus_filters).unwrap_or(lit(true));
 
                 let left_l = Rc::clone(&left_mexpr.operands()[0]);
                 let left_r = Rc::clone(&left_mexpr.operands()[1]);
@@ -193,9 +231,9 @@ impl RuleMatcher {
                     None => continue,
                 };
 
-
                 // Derive the equi join clause and filter between for the new join node
-                let (equi_join_clause, other) = self.split_eq_and_noneq_join_predicate(
+                let (equi_join_clause, other) = self
+                    .split_eq_and_noneq_join_predicate(
                         combined_filter.clone(), //see if we can change to a Rc<Expr>
                         left_r_schema.clone(),
                         right_schema.clone(),
@@ -207,13 +245,13 @@ impl RuleMatcher {
 
                 // Finally, build the new right join node
                 let new_right_join_schema = Arc::new(
-                        datafusion_expr::logical_plan::builder::build_join_schema(
-                            &left_r_schema_cloned,
-                            &right_schema_cloned,
-                            &datafusion_expr::JoinType::Inner,
-                        )
-                        .unwrap(),
-                    );
+                    datafusion_expr::logical_plan::builder::build_join_schema(
+                        &left_r_schema_cloned,
+                        &right_schema_cloned,
+                        &datafusion_expr::JoinType::Inner,
+                    )
+                    .unwrap(),
+                );
 
                 let new_right_join_node = LogicalPlan::Join(Join {
                     left: Arc::new(LogicalPlan::default()),
@@ -244,7 +282,8 @@ impl RuleMatcher {
                     None => continue,
                 };
 
-                 let (equi_join_clause2, other2) = self.split_eq_and_noneq_join_predicate(
+                let (equi_join_clause2, other2) = self
+                    .split_eq_and_noneq_join_predicate(
                         combined_filter.clone(),
                         left_l_schema.clone(),
                         new_right_join_schema.clone(),
@@ -271,7 +310,6 @@ impl RuleMatcher {
                     ),
                     null_equality: left_join.null_equality,
                 });
-
 
                 result.push(MExpr::build_with_node(
                     Rc::new(RefCell::new(new_top_join_node)),

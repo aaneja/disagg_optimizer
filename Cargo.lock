@@ -1284,6 +1284,7 @@ dependencies = [
  "datafusion",
  "datafusion-common",
  "datafusion-expr",
+ "datafusion-expr-common",
  "datafusion-optimizer",
  "murmur3",
  "once_cell",
