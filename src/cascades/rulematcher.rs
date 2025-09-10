@@ -80,6 +80,7 @@ impl RuleMatcher {
         }
     }
 
+    // (A ⋈ B) => (B ⋈ A)
     fn apply_join_commutativity(&self, mexpr: &MExpr) -> Vec<MExpr> {
         if let LogicalPlan::Join(join_node) = &*mexpr.op().borrow() {
             let left = Rc::clone(&mexpr.operands()[0]);
@@ -89,7 +90,7 @@ impl RuleMatcher {
                 vec![right, left],
             )]
         } else {
-            Vec::new() // Empty vector equivalent to ImmutableList.of()
+            Vec::new() 
         }
     }
 

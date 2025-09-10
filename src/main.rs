@@ -1,7 +1,8 @@
 use datafusion::arrow::array::{Int32Array, RecordBatch};
 use datafusion::arrow::datatypes::{DataType, Field, Schema};
 use datafusion::prelude::*;
-use datafusion_expr::LogicalPlan;
+use datafusion_expr::logical_plan::LogicalPlanBuilder;
+use datafusion_expr::logical_plan::LogicalPlan;
 use datafusion_common::tree_node::TreeNode;
 use std::sync::Arc;
 
@@ -76,14 +77,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let t3 = ctx.table("t3").await?;
     let t4 = ctx.table("t4").await?;
     
-    // Build the joins step by step
-    let joined_df = t1
-        .join(t2, JoinType::Inner, &["a1"], &["a2"], None)?
-        .join(t3, JoinType::Inner, &["a2"], &["a3"], None)?
-        .join(t4, JoinType::Inner, &["a3"], &["a4"], None)?
-        .select(vec![lit(1)])?; // SELECT 1
-    
-    let logical_plan = joined_df.into_optimized_plan()?;
+    // Build a join graph
+    let logical_plan = LogicalPlanBuilder::from((*t1.logical_plan()).clone())
+        .join((*t2.logical_plan()).clone(), JoinType::Inner, (vec!["a1"], vec!["a2"]), None)?
+        .join((*t3.logical_plan()).clone(), JoinType::Inner, (vec!["a2"], vec!["a3"]), None)?
+        .join((*t4.logical_plan()).clone(), JoinType::Inner, (vec!["a3"], vec!["a4"]), None)?
+        .project(vec![lit(1)])? // SELECT 1
+        .build()?;
 
     // Print the logical plan using display_indent()
     // println!("Logical Plan for complex joins:");
