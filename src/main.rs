@@ -8,6 +8,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 use crate::cascades::cascades::Cascades;
+use crate::cascades::util::get_all_possible_trees;
 mod planprinter;
 mod join_graph;
 
@@ -111,13 +112,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut cascades = Cascades::new();
     let root_group = cascades.gen_group_logical_plan(Rc::new(RefCell::new(logical_plan)));
 
-    println!("Memo before Cascades optimizer start");
+    println!("Memo before starting optimization:");
     cascades.print_memo();
-    
-    cascades.optimize(root_group);
+
+    cascades.optimize(root_group.clone());
 
     //Print memo stats
+    println!("Memo stats");
     cascades.print_memo_stats();
+
+    println!("Generating all possible join trees");
+    let all_trees = get_all_possible_trees(root_group);
+    println!("Writing these to output.txt");
+    let mut file = std::fs::File::create("output.txt").unwrap();
+    use std::io::Write;
+    for tree in all_trees {
+        writeln!(file, "{}", tree).unwrap();
+    }
+    file.flush().unwrap();
     
 
     Ok(())

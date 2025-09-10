@@ -1,13 +1,12 @@
 use super::group::Group;
 use super::operator::Operator;
 use datafusion_common::{DFSchema};
-use datafusion_expr::logical_plan::EmptyRelation; // Import EmptyRelation struct
 use datafusion_expr::{LogicalPlan};
 use std::cell::RefCell;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::sync::Arc;
-use xxhash_rust::xxh3::Xxh3; // Import Xxh3 struct for direct usage // Correct import for DFSchema
+use xxhash_rust::xxh3::Xxh3; 
 
 #[derive(Debug, Clone)]
 pub struct MExpr {
@@ -48,53 +47,26 @@ impl MExpr {
     ) -> Self {
         let mut hasher = Xxh3::new(); // Create a new Xxh3 hasher
 
-        // let modified_node = match node.borrow().clone() {
-        //     LogicalPlan::Projection(mut proj) => {
-        //         proj.input = Arc::new(LogicalPlan::default());
-        //         LogicalPlan::Projection(proj)
-        //     }
-        //     LogicalPlan::Filter(mut filter) => {
-        //         filter.input = Arc::new(LogicalPlan::default());
-        //         LogicalPlan::Filter(filter)
-        //     }
-        //     LogicalPlan::Aggregate(mut agg) => {
-        //         agg.input = Arc::new(LogicalPlan::default());
-        //         LogicalPlan::Aggregate(agg)
-        //     }
-        //     LogicalPlan::Join(mut join) => {
-        //         join.left = Arc::new(LogicalPlan::default());
-        //         join.right = Arc::new(LogicalPlan::default());
-        //         LogicalPlan::Join(join)
-        //     }
-        //     LogicalPlan::Sort(mut sort) => {
-        //         sort.input = Arc::new(LogicalPlan::default());
-        //         LogicalPlan::Sort(sort)
-        //     }
-        //     LogicalPlan::TableScan(ts) => {
-        //         LogicalPlan::TableScan(ts) // No modification needed
-        //     }
-        //     LogicalPlan::Limit(mut limit) => {
-        //         limit.input = Arc::new(LogicalPlan::default());
-        //         LogicalPlan::Limit(limit)
-        //     }
-        //     LogicalPlan::Union(mut union) => {
-        //         union.inputs = vec![];
-        //         LogicalPlan::Union(union)
-        //     }
-        //     LogicalPlan::EmptyRelation { .. } => {
-        //         LogicalPlan::EmptyRelation(EmptyRelation {
-        //             produce_one_row: false,
-        //             schema: Arc::new(DFSchema::empty()),
-        //         }) // Properly create an instance of EmptyRelation
-        //     }
-        //     other => other, // Handle other cases or default behavior
-        // };
-
-        // modified_node.hash(&mut hasher);
-
-        // Temporary workaround: Use the display string of the node for hashing
-        // We need to hash only the operator specific properties and not the children, cloning the node is failing with a stack overflow
-        hasher.update(format!("{}", node.borrow().display()).as_bytes());
+        // Hash the operator type and its specific properties, excluding children
+        match node.borrow().clone() {
+            LogicalPlan::Projection(proj) => {
+                proj.schema.hash(&mut hasher);
+                proj.expr.hash(&mut hasher);
+            }
+            LogicalPlan::Filter(filter) => {
+                filter.predicate.hash(&mut hasher);        
+            }
+            LogicalPlan::Join(join) => {
+                join.join_type.hash(&mut hasher);
+                join.on.hash(&mut hasher);
+                join.filter.hash(&mut hasher);
+                join.join_constraint.hash(&mut hasher);
+            }
+            LogicalPlan::TableScan(ts) => {
+                ts.hash(&mut hasher); 
+            }
+            _ => { /* Fix the other nodes similarly*/ }
+        };
 
         for operand in &operands {
             // All nodes, including the TableScan node will be a group

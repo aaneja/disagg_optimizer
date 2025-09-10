@@ -1,7 +1,6 @@
 use datafusion_expr::LogicalPlan;
 
 use super::group::Group;
-use super::operator::Operator;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -11,13 +10,8 @@ pub fn get_all_possible_trees(group: Rc<RefCell<Group>>) -> Vec<String> {
 
     for mexpr in group.borrow().equivalent_logical_mexprs.borrow().iter() {
         let op = mexpr.op();
-        if let LogicalPlan::TableScan(_) = &*op.borrow() {
-            if let Some(operand) = mexpr.operands().get(0) {
-                if let Some(source_node) = operand.borrow().source_node.as_ref() {
-                    let source_str = source_node.node_id.clone();
-                    return vec![source_str];
-                }
-            }
+        if let LogicalPlan::TableScan(table_scan) = &*op.borrow() {
+            return vec![table_scan.table_name.to_string()];
         }
 
         let mut lists = Vec::new();
