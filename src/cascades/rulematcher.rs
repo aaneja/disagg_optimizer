@@ -9,6 +9,7 @@ use datafusion::logical_expr::lit;
 use datafusion_expr::utils::{conjunction, split_conjunction_owned};
 use datafusion_expr::{BinaryExpr, Expr};
 use datafusion_expr::{Join, LogicalPlan};
+use debug_print::debug_println;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -93,6 +94,11 @@ impl RuleMatcher {
         }
     }
 
+    /// A clone of datafusion_optimizer::extract_equijoin_predicate
+    /// This is not working exactly as expected since it cannot do equality inference across multiple joins
+    /// For example : `Combined filter built : t1.a1 = t2.a2 AND t2.a2 = t3.a3, Left schema : fields:[t1.a1], metadata:{}, Right Schema fields:[t3.a3], metadata:{}, inferred equi-join clause []`
+    /// `a1 = a3` should be inferred but isn't
+    /// We will need to build this inference ourselves
     fn split_eq_and_noneq_join_predicate(
         &self,
         filter: Expr,
@@ -240,6 +246,14 @@ impl RuleMatcher {
                     )
                     .unwrap();
 
+                debug_println!(
+                    "Combined filter built : {}, Left schema : {}, Right Schema {}, inferred equi-join clause {}",
+                    combined_filter.to_string(),
+                    left_r_schema.to_string(),
+                    right_schema.to_string(),
+                    format!("{:?}", equi_join_clause)
+                );
+
                 let left_r_schema_cloned = left_r_schema.clone();
                 let right_schema_cloned = right_schema.clone();
 
@@ -257,12 +271,14 @@ impl RuleMatcher {
                     left: Arc::new(LogicalPlan::default()),
                     right: Arc::new(LogicalPlan::default()),
                     on: equi_join_clause,
-                    filter: other,
+                    filter: None, // HACK for now, we need to figure out residual filters
                     join_type: datafusion_expr::JoinType::Inner,
                     join_constraint: current_join.join_constraint,
                     schema: new_right_join_schema.clone(),
                     null_equality: current_join.null_equality,
                 });
+
+                debug_println!("New right join built : {}", new_right_join_node.display());
 
                 // Build or fetch the group for this join node
                 let new_right = self.gen_or_get_from_memo(
@@ -297,7 +313,7 @@ impl RuleMatcher {
                     left: Arc::new(LogicalPlan::default()),
                     right: Arc::new(LogicalPlan::default()),
                     on: equi_join_clause2,
-                    filter: other2,
+                    filter: None, // HACK for now
                     join_type: datafusion_expr::JoinType::Inner, // Preserve the original join type
                     join_constraint: left_join.join_constraint,
                     schema: Arc::new(
@@ -310,6 +326,8 @@ impl RuleMatcher {
                     ),
                     null_equality: left_join.null_equality,
                 });
+
+                debug_println!("New top join built : {}", new_top_join_node.display());
 
                 result.push(MExpr::build_with_node(
                     Rc::new(RefCell::new(new_top_join_node)),
