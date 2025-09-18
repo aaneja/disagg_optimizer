@@ -7,8 +7,8 @@ use datafusion_common::tree_node::TreeNode;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::Instant;
 use crate::cascades::cascades::Cascades;
-use crate::cascades::util::get_all_possible_trees;
 mod planprinter;
 mod join_graph;
 
@@ -16,43 +16,20 @@ pub mod cascades;
 
 use planprinter::PlanStringBuilder;
 
-async fn setup_tables() -> Result<SessionContext, Box<dyn std::error::Error>> {
+async fn setup_tables(table_count: usize) -> Result<SessionContext, Box<dyn std::error::Error>> {
     // Create a DataFusion context
     let ctx = SessionContext::new();
 
-    // Step 1: Create 4 tables (t1, t2, t3, t4) with integer columns (a1, a2, a3, a4)
-    
-    // Table t1 with column a1
-    let schema_t1 = Arc::new(Schema::new(vec![
-        Field::new("a1", DataType::Int32, false),
-    ]));
-    let data_t1 = Int32Array::from(vec![1, 2, 3, 4, 5]);
-    let batch_t1 = RecordBatch::try_new(schema_t1.clone(), vec![Arc::new(data_t1)])?;
-    ctx.register_batch("t1", batch_t1)?;
-
-    // Table t2 with column a2
-    let schema_t2 = Arc::new(Schema::new(vec![
-        Field::new("a2", DataType::Int32, false),
-    ]));
-    let data_t2 = Int32Array::from(vec![1, 2, 3, 6, 7]);
-    let batch_t2 = RecordBatch::try_new(schema_t2.clone(), vec![Arc::new(data_t2)])?;
-    ctx.register_batch("t2", batch_t2)?;
-
-    // Table t3 with column a3
-    let schema_t3 = Arc::new(Schema::new(vec![
-        Field::new("a3", DataType::Int32, false),
-    ]));
-    let data_t3 = Int32Array::from(vec![1, 2, 8, 9, 10]);
-    let batch_t3 = RecordBatch::try_new(schema_t3.clone(), vec![Arc::new(data_t3)])?;
-    ctx.register_batch("t3", batch_t3)?;
-
-    // Table t4 with column a4
-    let schema_t4 = Arc::new(Schema::new(vec![
-        Field::new("a4", DataType::Int32, false),
-    ]));
-    let data_t4 = Int32Array::from(vec![1, 3, 5, 11, 12]);
-    let batch_t4 = RecordBatch::try_new(schema_t4.clone(), vec![Arc::new(data_t4)])?;
-    ctx.register_batch("t4", batch_t4)?;
+    // Step 1: Dynamically create tables with integer columns (a1, a2, ..., an)
+    for i in 1..=table_count {
+        let column_name = format!("a{}", i);
+        let schema = Arc::new(Schema::new(vec![
+            Field::new(&column_name, DataType::Int32, false),
+        ]));
+        let data = Int32Array::from((1..=5).map(|x| (x * i) as i32).collect::<Vec<_>>());
+        let batch = RecordBatch::try_new(schema.clone(), vec![Arc::new(data)])?;
+        ctx.register_batch(&format!("t{}", i), batch)?;
+    }
 
     Ok(ctx)
 }
@@ -67,24 +44,37 @@ fn custom_print(plan: &LogicalPlan) -> Result<String, Box<dyn std::error::Error>
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Creating DataFusion logical plan with 4 tables and joins...");
+    let args: Vec<String> = std::env::args().collect();
+    let table_count = args.get(1)
+        .and_then(|arg| arg.parse::<usize>().ok())
+        .unwrap_or(4); // Default to 4 if no valid argument is provided
 
-    let ctx = setup_tables().await?;
+    println!("Creating DataFusion logical plan with {} tables and joins...", table_count);
 
-    // Step 2: Create a logical plan that emulates:
-    // SELECT 1 FROM t1 inner join t2 on a1=a2 inner join t3 on a2=a3 inner join t4 on a1=a4
-    // Using DataFusion DataFrame API
-    
-    let t1 = ctx.table("t1").await?;
-    let t2 = ctx.table("t2").await?;
-    let t3 = ctx.table("t3").await?;
-    let t4 = ctx.table("t4").await?;
-    
-    // Build a join graph
-    let logical_plan = LogicalPlanBuilder::from((*t1.logical_plan()).clone())
-        .join((*t2.logical_plan()).clone(), JoinType::Inner, (vec!["a1"], vec!["a2"]), None)?
-        .join((*t3.logical_plan()).clone(), JoinType::Inner, (vec!["a2"], vec!["a3"]), None)?
-        .join((*t4.logical_plan()).clone(), JoinType::Inner, (vec!["a3"], vec!["a4"]), None)?
+    let ctx = setup_tables(table_count).await?;
+
+    // Step 2: Dynamically create a logical plan for a left-deep join tree
+    let mut logical_plan = None;
+
+    for i in 1..=table_count {
+        let table_name = format!("t{}", i);
+        let table = ctx.table(&table_name).await?;
+
+        if let Some(plan) = logical_plan {
+            let left_column = format!("a{}", i - 1);
+            let right_column = format!("a{}", i);
+            logical_plan = Some(
+                LogicalPlanBuilder::from(plan)
+                    .join((*table.logical_plan()).clone(), JoinType::Inner, (vec![left_column], vec![right_column]), None)?
+                    .build()?,
+            );
+        } else {
+            logical_plan = Some((*table.logical_plan()).clone());
+        }
+    }
+
+    // Add a projection to select a constant value (e.g., SELECT 1)
+    let logical_plan = LogicalPlanBuilder::from(logical_plan.unwrap())
         .project(vec![lit(1)])? // SELECT 1
         .build()?;
 
@@ -115,21 +105,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Memo before starting optimization:");
     cascades.print_memo();
 
+    let start_time = Instant::now();
     cascades.optimize(root_group.clone());
-
+    let duration = start_time.elapsed();
+    println!("Optimization completed in: {:.2?}", duration);
+    
     //Print memo stats
     println!("Memo stats");
     cascades.print_memo_stats();
 
-    println!("Generating all possible join trees");
-    let all_trees = get_all_possible_trees(root_group);
-    println!("Writing these to output.txt");
-    let mut file = std::fs::File::create("output.txt").unwrap();
-    use std::io::Write;
-    for tree in all_trees {
-        writeln!(file, "{}", tree).unwrap();
-    }
-    file.flush().unwrap();
+    // println!("Generating all possible join trees");
+    // let all_trees = get_all_possible_trees(root_group);
+    
+    // println!("Writing these to output.txt");
+    // let mut file = std::fs::File::create("output.txt").unwrap();
+    // use std::io::Write;
+    // for tree in all_trees {
+    //     writeln!(file, "{}", tree).unwrap();
+    // }
+    // file.flush().unwrap();
     
 
     Ok(())

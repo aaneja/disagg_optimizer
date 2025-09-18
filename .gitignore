@@ -1,1 +1,5 @@
 /target
+output.txt
+*Joins.txt
+*.svg
+perf*
