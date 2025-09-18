@@ -65,10 +65,3 @@ impl TreeNodeVisitor<'_> for PlanStringBuilder {
         Ok(TreeNodeRecursion::Continue)
     }
 }
-
-pub fn print_cascades_memo(join_nodes: &str) {
-    let mut cascades = Cascades::new();
-    let root_group = cascades.seed_memo(join_nodes);
-    cascades.optimize(root_group);
-    cascades.print_memo();
-}

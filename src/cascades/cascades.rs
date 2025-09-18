@@ -1,7 +1,6 @@
 use super::rulematcher::RuleMatcher;
 use super::group::Group;
 use super::mexpr::MExpr;
-use super::operator::Operator;
 use std::rc::Rc;
 use std::cell::RefCell;
 use ahash::AHashMap; // Using ahash for better performance
@@ -27,21 +26,7 @@ impl Cascades {
     }
 
     pub fn optimize(&mut self, root_group: Rc<RefCell<Group>>) {
-        self.rulematcher.explore(root_group, &mut self.memo); // Updated to pass AHashMap<u64, _>
-    }
-
-    /// Generates groups for a join nodes string as a right deep tree
-    /// Example of a joinNodes string : "1234" => 4 source nodes with ids 1, 2, 3 and 4
-    fn gen_groups(&mut self, join_nodes: &str) -> Rc<RefCell<Group>> {
-        let plan_mexpr = if join_nodes.len() > 1 {
-            let left = self.gen_groups(&join_nodes[0..1]);
-            let right = self.gen_groups(&join_nodes[1..]);
-            MExpr::build_with(Operator::InnerJoin, vec![left, right])
-        } else {
-            MExpr::build_with(Operator::Source, vec![Group::get_source_node_group(join_nodes.to_string())])
-        };
-
-        self.gen_or_get_from_memo(plan_mexpr)
+        self.rulematcher.explore(root_group, &mut self.memo); 
     }
 
     fn gen_or_get_from_memo(&mut self, plan_mexpr: MExpr) -> Rc<RefCell<Group>> {
@@ -56,13 +41,6 @@ impl Cascades {
         let new_group = Group::from_mexpr(plan_mexpr);
         self.memo.insert(hash, Rc::clone(&new_group));
         new_group
-    }
-
-    pub fn seed_memo(&mut self, join_nodes: &str) -> Rc<RefCell<Group>> {
-        let root = self.gen_groups(join_nodes);
-        // Util.printPlan(root.getStartExpression());
-        // self.print_memo();
-        root
     }
 
     pub fn print_memo(&self) {

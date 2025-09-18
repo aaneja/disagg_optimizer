@@ -58,7 +58,7 @@ impl MExpr {
             }
             LogicalPlan::Join(join) => {
                 join.join_type.hash(&mut hasher);
-                join.on.hash(&mut hasher);
+                // join.on.hash(&mut hasher); // TODO : We need to fix the hashing for the ON clauses, so that a join node with [a = b] and [b = a] hash the same
                 join.filter.hash(&mut hasher);
                 join.join_constraint.hash(&mut hasher);
             }
