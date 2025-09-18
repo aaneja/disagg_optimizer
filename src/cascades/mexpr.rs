@@ -58,7 +58,10 @@ impl MExpr {
             }
             LogicalPlan::Join(join) => {
                 join.join_type.hash(&mut hasher);
-                // join.on.hash(&mut hasher); // TODO : We need to fix the hashing for the ON clauses, so that a join node with [a = b] and [b = a] hash the same
+                // TODO : We need to fix the hashing for the ON clauses, so that a join node with [a = b] and [b = a] hash the same
+                // TODO : Because rulematcher.split_eq_and_noneq_join_predicate is not correctly generating equality inferences
+                // TODO : We are seeing CROSS JOINs while these would have been correctly generated as Inner Joins with ON clauses
+                // join.on.hash(&mut hasher); 
                 join.filter.hash(&mut hasher);
                 join.join_constraint.hash(&mut hasher);
             }
