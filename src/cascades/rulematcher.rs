@@ -34,6 +34,9 @@ impl RuleMatcher {
         group: Rc<RefCell<Group>>,
         memo: &mut AHashMap<u64, Rc<RefCell<Group>>>,
     ) {
+        if group.borrow().is_explored() {
+            return; // Already explored
+        }
         // Process all unexplored expressions
         while let Some(mexpr) = {
             let group_borrowed = group.borrow_mut();
@@ -58,9 +61,7 @@ impl RuleMatcher {
                 .push(mexpr);
         }
 
-        // Mark group as explored - need unsafe for interior mutability
-        // Why cant we use set_explored on Group instead ?
-        group.borrow_mut().explored = true;
+        group.borrow_mut().set_explored(true);
     }
 
     fn apply_transformation_rules(
