@@ -62,7 +62,7 @@ pub fn get_all_possible_trees_count(group: Rc<RefCell<Group>>) -> u64 {
             .borrow()
             .is_empty()
     );
-    assert!(group.borrow().explored);
+    assert!(group.borrow().is_explored());
 
     for mexpr in group.borrow().equivalent_logical_mexprs.borrow().iter() {
         let op = mexpr.op();

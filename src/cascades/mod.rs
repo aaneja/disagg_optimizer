@@ -5,3 +5,4 @@ pub mod rulematcher;
 pub mod sourcenode;
 pub mod operator;
 pub mod util;
+pub mod constants;

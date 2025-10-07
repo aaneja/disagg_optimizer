@@ -45,7 +45,13 @@ impl RuleMatcher {
                 .borrow_mut();
             unexplored.pop_front()
         } {
-            // First explore all children of this expression to completion
+            // TODO : Pass through upper and lower bound estimates as detailed in 
+            // https://15721.courses.cs.cmu.edu/spring2023/papers/16-optimizer1/shapiro-ideas2001.pdf
+            // before exploring this mexpr
+            // If we already have a cheaper cost for this group, skip exploring this mexpr
+
+            // For now, explore all children of this expression to completion
+            // This is the 'traditional' Cascades implementation
             for operand in mexpr.operands() {
                 self.explore(Rc::clone(operand), memo);
             }
@@ -61,6 +67,7 @@ impl RuleMatcher {
                 .push(mexpr);
         }
 
+        // Mark the group as fully explored; store the cheapest logical expression and its cost
         group.borrow_mut().set_explored(true);
     }
 
