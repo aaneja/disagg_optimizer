@@ -81,3 +81,30 @@ pub fn get_all_possible_trees_count(group: Rc<RefCell<Group>>) -> u64 {
 
     output
 }
+
+pub fn get_cheapest_tree(group: Rc<RefCell<Group>>) -> String {
+    if group.borrow().cheapest_logical_expression.is_none() {
+        return "None".to_string();
+    }
+
+    let cheapest_expr = group.borrow().cheapest_logical_expression.clone().unwrap();
+    let op = cheapest_expr.op();
+    let mut children = Vec::new();
+
+    for operand in cheapest_expr.operands() {
+        children.push(get_cheapest_tree(Rc::clone(operand)));
+    }
+
+    if children.is_empty() {
+        return format!("{}, Cost {}, RowCount {}", op.borrow().display(), cheapest_expr.cost(), cheapest_expr.row_count());
+    }
+
+    let mut result = format!("{}, Cost {}, RowCount {}\n", op.borrow().display(), cheapest_expr.cost(), cheapest_expr.row_count());
+    for child in children {
+        for line in child.lines() {
+            result.push_str(&format!("    -> {}\n", line));
+        }
+    }
+
+    result.trim_end().to_string()
+}

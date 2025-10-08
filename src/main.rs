@@ -9,6 +9,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Instant;
 use crate::cascades::cascades::Cascades;
+use crate::cascades::util::get_cheapest_tree;
 mod planprinter;
 mod join_graph;
 
@@ -45,9 +46,13 @@ fn custom_print(plan: &LogicalPlan) -> Result<String, Box<dyn std::error::Error>
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
-    let table_count = args.get(1)
-        .and_then(|arg| arg.parse::<usize>().ok())
-        .unwrap_or(4); // Default to 4 if no valid argument is provided
+    let table_row_counts: Vec<usize> = args.get(1)
+        .map(|arg| arg.split(',')
+            .filter_map(|s| s.trim().parse::<usize>().ok())
+            .collect())
+        .unwrap_or_else(|| vec![4]); // Default to a single table with 4 rows if no valid argument is provided
+
+    let table_count = table_row_counts.len();
 
     println!("Creating DataFusion logical plan with {} tables and joins...", table_count);
 
@@ -60,16 +65,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let table_name = format!("t{}", i);
         let table = ctx.table(&table_name).await?;
 
+        let mut table_scan = match table.logical_plan() {
+            LogicalPlan::TableScan(scan) => scan.clone(),
+            _ => panic!("Expected a TableScan node"),
+        };
+
+        table_scan.fetch = Some(table_row_counts[i - 1]);
+
         if let Some(plan) = logical_plan {
             let left_column = format!("a{}", i - 1);
             let right_column = format!("a{}", i);
             logical_plan = Some(
                 LogicalPlanBuilder::from(plan)
-                    .join((*table.logical_plan()).clone(), JoinType::Inner, (vec![left_column], vec![right_column]), None)?
+                    .join(LogicalPlan::TableScan(table_scan), JoinType::Inner, (vec![left_column], vec![right_column]), None)?
                     .build()?,
             );
         } else {
-            logical_plan = Some((*table.logical_plan()).clone());
+            logical_plan = Some(LogicalPlan::TableScan(table_scan));
         }
     }
 
@@ -113,6 +125,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //Print memo stats
     println!("Memo stats");
     cascades.print_memo_stats();
+
+    println!("Cheapest plan:");
+    println!("{}",  get_cheapest_tree(root_group.clone()));
 
     // println!("Generating all possible join trees");
     // let all_trees = get_all_possible_trees(root_group);

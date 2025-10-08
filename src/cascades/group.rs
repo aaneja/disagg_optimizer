@@ -96,11 +96,12 @@ impl Group {
                     self.cheapest_logical_expression = Some(mexpr.clone());
                 }
             });
+            
         self.min_cost = self
             .cheapest_logical_expression
             .as_ref()
             .map(|expr| expr.cost())
-            .unwrap_or(0.0) as f64; // Assuming cost is f64, convert to u64
+            .unwrap_or(0.0) as f64;
     }
 
     pub fn is_explored(&self) -> bool {

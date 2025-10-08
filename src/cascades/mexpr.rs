@@ -78,6 +78,7 @@ impl MExpr {
             LogicalPlan::TableScan(ts) => {
                 ts.hash(&mut hasher);
                 row_count = ts.fetch.unwrap_or(DEFAULT_ROW_COUNT.try_into().unwrap()) as u64;
+                cost = row_count as f64;
             }
             _ => { /* Fix the other nodes similarly*/ }
         };
