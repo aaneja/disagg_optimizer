@@ -45,6 +45,9 @@ fn custom_print(plan: &LogicalPlan) -> Result<String, Box<dyn std::error::Error>
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize the logger
+    env_logger::init();
+
     let args: Vec<String> = std::env::args().collect();
     let table_row_counts: Vec<usize> = args.get(1)
         .map(|arg| arg.split(',')

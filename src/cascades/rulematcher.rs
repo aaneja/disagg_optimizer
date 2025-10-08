@@ -9,7 +9,7 @@ use datafusion::logical_expr::lit;
 use datafusion_expr::utils::{conjunction, split_conjunction_owned};
 use datafusion_expr::{BinaryExpr, Expr};
 use datafusion_expr::{Join, LogicalPlan};
-use debug_print::debug_println;
+use log::{debug};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -246,7 +246,7 @@ impl RuleMatcher {
                 };
 
                 // Derive the equi join clause and filter between for the new join node
-                let (equi_join_clause, other) = self
+                let (equi_join_clause, _other) = self
                     .split_eq_and_noneq_join_predicate(
                         combined_filter.clone(), //see if we can change to a Rc<Expr>
                         left_r_schema.clone(),
@@ -254,7 +254,7 @@ impl RuleMatcher {
                     )
                     .unwrap();
 
-                debug_println!(
+                debug!(
                     "Combined filter built : {}, Left schema : {}, Right Schema {}, inferred equi-join clause {}",
                     combined_filter.to_string(),
                     left_r_schema.to_string(),
@@ -286,7 +286,7 @@ impl RuleMatcher {
                     null_equality: current_join.null_equality,
                 });
 
-                debug_println!("New right join built : {}", new_right_join_node.display());
+                debug!("New right join built : {}", new_right_join_node.display());
 
                 // Build or fetch the group for this join node
                 let new_right = self.gen_or_get_from_memo(
@@ -306,7 +306,7 @@ impl RuleMatcher {
                     None => continue,
                 };
 
-                let (equi_join_clause2, other2) = self
+                let (equi_join_clause2, _other2) = self
                     .split_eq_and_noneq_join_predicate(
                         combined_filter.clone(),
                         left_l_schema.clone(),
@@ -335,7 +335,7 @@ impl RuleMatcher {
                     null_equality: left_join.null_equality,
                 });
 
-                debug_println!("New top join built : {}", new_top_join_node.display());
+                debug!("New top join built : {}", new_top_join_node.display());
 
                 result.push(MExpr::build_with_node(
                     Rc::new(RefCell::new(new_top_join_node)),
