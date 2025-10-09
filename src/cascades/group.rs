@@ -81,6 +81,10 @@ impl Group {
             .unwrap_or(0)
     }
 
+    pub fn get_group_cost(&self) -> f64 {
+        self.min_cost
+    }
+
     pub fn set_explored(&mut self, explored: bool) {
         self.explored = explored;
         // Find the cheapest logical expression from equivalent_logical_mexprs

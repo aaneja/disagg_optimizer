@@ -33,12 +33,14 @@ impl MExpr {
         let mut row_count = DEFAULT_ROW_COUNT; // Default row count, need to improve this
         let mut cost = 0.0;
         let mut operand_row_counts: Vec<u64> = Vec::new();
+        let mut operand_costs: f64 = 0.0;
 
         // Hash operands first, this way we can extract their properties
         for operand in &operands {
             // All nodes, including the TableScan node will be a group
             hasher.update(operand.borrow().get_group_hash().to_le_bytes().as_ref());
             operand_row_counts.push(operand.borrow().get_group_row_count());
+            operand_costs += operand.borrow().get_group_cost();
         }
 
         // Hash the operator type and its specific properties, excluding children
@@ -51,7 +53,7 @@ impl MExpr {
                     .first()
                     .cloned()
                     .unwrap_or(DEFAULT_ROW_COUNT);
-                cost = PROJECT_COST_PER_ROW * row_count as f64; // Assume projection has a small cost
+                cost = PROJECT_COST_PER_ROW * row_count as f64 + operand_costs; // Assume projection has a small cost
             }
             LogicalPlan::Filter(filter) => {
                 filter.predicate.hash(&mut hasher);
@@ -61,7 +63,7 @@ impl MExpr {
                         .first()
                         .cloned()
                         .unwrap_or(DEFAULT_ROW_COUNT) as f64) as u64; // Assume filter reduces rows by 90%
-                cost = FILTER_COST_PER_ROW * row_count as f64;
+                cost = FILTER_COST_PER_ROW * row_count as f64 + operand_costs;
             }
             LogicalPlan::Join(join) => {
                 join.join_type.hash(&mut hasher);
@@ -72,8 +74,6 @@ impl MExpr {
                 join.filter.hash(&mut hasher);
                 join.join_constraint.hash(&mut hasher);
 
-                //debug!("Join plan: {:?}", join.on);
-
                 // Simplistic cost model for now , we use pre canned selectivities
                 // We will later add NDV stats based estimation
                 let selectivity = Self::get_join_selectivity(&join.on);
@@ -82,13 +82,13 @@ impl MExpr {
                     join.on, selectivity
                 );
                 if selectivity.is_finite() {
-                    row_count = (selectivity * operand_row_counts.iter().product::<u64>() as f64) as u64;
-                    cost = JOIN_COST_PER_ROW * row_count as f64;
+                    row_count =
+                        (selectivity * operand_row_counts.iter().product::<u64>() as f64) as u64;
                 } else {
                     // Cross join
                     row_count = operand_row_counts.iter().product();
-                    cost = JOIN_COST_PER_ROW * row_count as f64;
                 }
+                cost = JOIN_COST_PER_ROW * row_count as f64 + operand_costs;
             }
             LogicalPlan::TableScan(ts) => {
                 ts.hash(&mut hasher);
@@ -230,7 +230,7 @@ lazy_static! {
         map.insert(("t2", "t3"), 0.01);
         map.insert(("t2", "t4"), 0.01);
         map.insert(("t2", "t5"), 0.01);
-        map.insert(("t3", "t4"), 0.0001);
+        map.insert(("t3", "t4"), 0.000001);
         map.insert(("t3", "t5"), 0.0001);
         map.insert(("t4", "t5"), 0.1);
         map
