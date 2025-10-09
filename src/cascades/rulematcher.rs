@@ -39,7 +39,7 @@ impl RuleMatcher {
             return; // Already explored
         }
         // Process all unexplored expressions
-        while let Some(mexpr) = {
+        while let Some(mut mexpr) = {
             let group_borrowed = group.borrow_mut();
             let mut unexplored = group_borrowed
                 .unexplored_equivalent_logical_mexprs
@@ -61,6 +61,7 @@ impl RuleMatcher {
             self.apply_transformation_rules(&group, &mexpr, memo);
 
             // This Expression is now explored
+            mexpr.update_cost_and_rowcount(); // Fixup the cost and rowcount for this expression now that operands are explored
             group
                 .borrow_mut()
                 .equivalent_logical_mexprs

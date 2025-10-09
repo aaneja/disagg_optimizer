@@ -3,7 +3,8 @@ use crate::cascades::constants::{
 };
 
 use super::group::Group;
-use datafusion_common::{DFSchema, TableReference};
+use core::f64;
+use datafusion_common::{DFSchema};
 use datafusion_expr::{Expr, LogicalPlan};
 use lazy_static::lazy_static;
 use log::debug;
@@ -30,17 +31,11 @@ impl MExpr {
         operands: Vec<Rc<RefCell<Group>>>,
     ) -> Self {
         let mut hasher = Xxh3::new(); // Create a new Xxh3 hasher
-        let mut row_count = DEFAULT_ROW_COUNT; // Default row count, need to improve this
-        let mut cost = 0.0;
-        let mut operand_row_counts: Vec<u64> = Vec::new();
-        let mut operand_costs: f64 = 0.0;
 
         // Hash operands first, this way we can extract their properties
         for operand in &operands {
             // All nodes, including the TableScan node will be a group
             hasher.update(operand.borrow().get_group_hash().to_le_bytes().as_ref());
-            operand_row_counts.push(operand.borrow().get_group_row_count());
-            operand_costs += operand.borrow().get_group_cost();
         }
 
         // Hash the operator type and its specific properties, excluding children
@@ -48,22 +43,9 @@ impl MExpr {
             LogicalPlan::Projection(proj) => {
                 proj.schema.hash(&mut hasher);
                 proj.expr.hash(&mut hasher);
-
-                row_count = operand_row_counts
-                    .first()
-                    .cloned()
-                    .unwrap_or(DEFAULT_ROW_COUNT);
-                cost = PROJECT_COST_PER_ROW * row_count as f64 + operand_costs; // Assume projection has a small cost
             }
             LogicalPlan::Filter(filter) => {
                 filter.predicate.hash(&mut hasher);
-
-                row_count = (0.10
-                    * operand_row_counts
-                        .first()
-                        .cloned()
-                        .unwrap_or(DEFAULT_ROW_COUNT) as f64) as u64; // Assume filter reduces rows by 90%
-                cost = FILTER_COST_PER_ROW * row_count as f64 + operand_costs;
             }
             LogicalPlan::Join(join) => {
                 join.join_type.hash(&mut hasher);
@@ -73,7 +55,54 @@ impl MExpr {
                 // join.on.hash(&mut hasher);
                 join.filter.hash(&mut hasher);
                 join.join_constraint.hash(&mut hasher);
+            }
+            LogicalPlan::TableScan(ts) => {
+                ts.hash(&mut hasher);
+            }
+            _ => { /* Fix the other nodes similarly*/ }
+        };
 
+        let hash = hasher.digest();
+
+        Self {
+            hash,
+            cost: f64::INFINITY,
+            row_count: u64::MAX,
+            op: node,
+            operands,
+            canonicalized: hash.to_string(),
+        }
+    }
+
+    // This will be called after the children groups have been explored and have accurate cost/rowcount
+    pub fn update_cost_and_rowcount(&mut self) {
+        let mut row_count = DEFAULT_ROW_COUNT; // Default row count, need to improve this
+        let mut cost = 0.0;
+        let mut operand_row_counts: Vec<u64> = Vec::new();
+        let mut operand_costs: f64 = 0.0;
+
+        for operand in &self.operands {
+            operand_row_counts.push(operand.borrow().get_group_row_count());
+            operand_costs += operand.borrow().get_group_cost();
+        }
+
+        match self.op.borrow().clone() {
+            LogicalPlan::Projection(_proj) => {
+                row_count = operand_row_counts
+                    .first()
+                    .cloned()
+                    .unwrap_or(DEFAULT_ROW_COUNT);
+                cost = PROJECT_COST_PER_ROW * row_count as f64 + operand_costs; // Assume projection has a small cost
+            }
+            LogicalPlan::Filter(_filter) => {
+                row_count = (0.10
+                    * operand_row_counts
+                        .first()
+                        .cloned()
+                        .unwrap_or(DEFAULT_ROW_COUNT) as f64) as u64; // Assume filter reduces rows by 90%
+                cost = FILTER_COST_PER_ROW * row_count as f64 + operand_costs;
+            }
+            LogicalPlan::Join(join) => {
                 // Simplistic cost model for now , we use pre canned selectivities
                 // We will later add NDV stats based estimation
                 let selectivity = Self::get_join_selectivity(&join.on);
@@ -92,23 +121,14 @@ impl MExpr {
                 cost = JOIN_COST_PER_ROW * row_count as f64 + operand_costs;
             }
             LogicalPlan::TableScan(ts) => {
-                ts.hash(&mut hasher);
                 row_count = ts.fetch.unwrap_or(DEFAULT_ROW_COUNT.try_into().unwrap()) as u64;
                 cost = row_count as f64;
             }
             _ => { /* Fix the other nodes similarly*/ }
         };
 
-        let hash = hasher.digest();
-
-        Self {
-            hash,
-            cost: cost,
-            row_count: row_count,
-            op: node,
-            operands,
-            canonicalized: hash.to_string(),
-        }
+        self.cost = cost;
+        self.row_count = row_count;
     }
 
     pub fn get_schema(&self) -> Option<Arc<DFSchema>> {

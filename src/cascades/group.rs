@@ -75,7 +75,16 @@ impl Group {
     }
 
     pub fn get_group_row_count(&self) -> u64 {
-        self.start_expression
+        if !self.explored {
+            log::debug!("Group is not explored and we using the default row count from start expression");
+
+            self.start_expression
+                .as_ref()
+                .map(|expr| expr.row_count())
+                .unwrap_or(0);
+        }
+
+        self.cheapest_logical_expression
             .as_ref()
             .map(|expr| expr.row_count())
             .unwrap_or(0)
@@ -103,7 +112,7 @@ impl Group {
                     self.cheapest_logical_expression = Some(mexpr.clone());
                 }
             });
-            
+
         self.min_cost = self
             .cheapest_logical_expression
             .as_ref()
