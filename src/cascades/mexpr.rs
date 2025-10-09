@@ -3,9 +3,12 @@ use crate::cascades::constants::{
 };
 
 use super::group::Group;
-use datafusion_common::DFSchema;
-use datafusion_expr::LogicalPlan;
+use datafusion_common::{DFSchema, TableReference};
+use datafusion_expr::{Expr, LogicalPlan};
+use lazy_static::lazy_static;
+use log::debug;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -69,11 +72,23 @@ impl MExpr {
                 join.filter.hash(&mut hasher);
                 join.join_constraint.hash(&mut hasher);
 
-                // Simplistic cost model for now :
-                // Multiply all operand row counts, assume selectivity of 10%
+                //debug!("Join plan: {:?}", join.on);
+
+                // Simplistic cost model for now , we use pre canned selectivities
                 // We will later add NDV stats based estimation
-                row_count = (0.10 * operand_row_counts.iter().product::<u64>() as f64) as u64;
-                cost = JOIN_COST_PER_ROW * row_count as f64;
+                let selectivity = Self::get_join_selectivity(&join.on);
+                debug!(
+                    "Estimated selectivity for join {:?} is {}",
+                    join.on, selectivity
+                );
+                if selectivity.is_finite() {
+                    row_count = (selectivity * operand_row_counts.iter().product::<u64>() as f64) as u64;
+                    cost = JOIN_COST_PER_ROW * row_count as f64;
+                } else {
+                    // Cross join
+                    row_count = operand_row_counts.iter().product();
+                    cost = JOIN_COST_PER_ROW * row_count as f64;
+                }
             }
             LogicalPlan::TableScan(ts) => {
                 ts.hash(&mut hasher);
@@ -139,6 +154,55 @@ impl MExpr {
     pub fn row_count(&self) -> u64 {
         self.row_count
     }
+
+    pub fn get_join_selectivity(join_on: &[(Expr, Expr)]) -> f64 {
+        if let Some((left_expr, right_expr)) = join_on.first() {
+            let mut left_table = None;
+            let mut right_table = None;
+
+            // Parse the left expression to determine the table used
+            if let Expr::Column(column) = left_expr {
+                if let Some(table_ref) = &column.relation {
+                    // debug!("Left Table used in join: {:?}", table_ref);
+                    left_table = Some(table_ref.to_string());
+                } else {
+                    debug!("Left Table reference is not available");
+                }
+            } else {
+                debug!("Left expression is not a column");
+            }
+
+            // Parse the right expression to determine the table used
+            if let Expr::Column(column) = right_expr {
+                if let Some(table_ref) = &column.relation {
+                    // debug!("Right Table used in join: {:?}", table_ref);
+                    right_table = Some(table_ref.to_string());
+                } else {
+                    debug!("Right Table reference is not available");
+                }
+            } else {
+                debug!("Right expression is not a column");
+            }
+
+            // Lookup selectivity if both tables are resolved
+            if let (Some(left), Some(right)) = (left_table, right_table) {
+                if let Some(&selectivity) = SELECTIVITY_MAP.get(&(left.as_str(), right.as_str())) {
+                    return selectivity;
+                } else if let Some(&selectivity) =
+                    SELECTIVITY_MAP.get(&(right.as_str(), left.as_str()))
+                {
+                    return selectivity;
+                } else {
+                    debug!("Selectivity not found for tables: ({}, {})", left, right);
+                }
+            }
+        } else {
+            debug!("Join condition is empty");
+        }
+
+        // Cross join
+        f64::INFINITY
+    }
 }
 
 impl Hash for MExpr {
@@ -154,3 +218,21 @@ impl PartialEq for MExpr {
 }
 
 impl Eq for MExpr {}
+
+lazy_static! {
+    pub static ref SELECTIVITY_MAP: HashMap<(&'static str, &'static str), f64> = {
+        let mut map = HashMap::new();
+        // Some example selectivities between tables to start off
+        map.insert(("t1", "t2"), 0.001);
+        map.insert(("t1", "t3"), 0.001);
+        map.insert(("t1", "t4"), 0.001);
+        map.insert(("t1", "t5"), 0.001);
+        map.insert(("t2", "t3"), 0.01);
+        map.insert(("t2", "t4"), 0.01);
+        map.insert(("t2", "t5"), 0.01);
+        map.insert(("t3", "t4"), 0.0001);
+        map.insert(("t3", "t5"), 0.0001);
+        map.insert(("t4", "t5"), 0.1);
+        map
+    };
+}
