@@ -82,6 +82,9 @@ impl Group {
     }
 
     pub fn get_group_cost(&self) -> f64 {
+        if !self.explored {
+            log::debug!("Group is not explored and we using the default cost of 0.0");
+        }
         self.min_cost
     }
 

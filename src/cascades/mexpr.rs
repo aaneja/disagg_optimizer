@@ -81,11 +81,12 @@ impl MExpr {
                     "Estimated selectivity for join {:?} is {}",
                     join.on, selectivity
                 );
-                if selectivity.is_finite() {
+                if selectivity != 1.0 {
                     row_count =
                         (selectivity * operand_row_counts.iter().product::<u64>() as f64) as u64;
                 } else {
                     // Cross join
+                    log::info!("Cross join detected, using default row count");
                     row_count = operand_row_counts.iter().product();
                 }
                 cost = JOIN_COST_PER_ROW * row_count as f64 + operand_costs;
@@ -156,14 +157,15 @@ impl MExpr {
     }
 
     pub fn get_join_selectivity(join_on: &[(Expr, Expr)]) -> f64 {
-        if let Some((left_expr, right_expr)) = join_on.first() {
+        let mut total_selectivity = 1.0;
+
+        for (left_expr, right_expr) in join_on {
             let mut left_table = None;
             let mut right_table = None;
 
             // Parse the left expression to determine the table used
             if let Expr::Column(column) = left_expr {
                 if let Some(table_ref) = &column.relation {
-                    // debug!("Left Table used in join: {:?}", table_ref);
                     left_table = Some(table_ref.to_string());
                 } else {
                     debug!("Left Table reference is not available");
@@ -175,7 +177,6 @@ impl MExpr {
             // Parse the right expression to determine the table used
             if let Expr::Column(column) = right_expr {
                 if let Some(table_ref) = &column.relation {
-                    // debug!("Right Table used in join: {:?}", table_ref);
                     right_table = Some(table_ref.to_string());
                 } else {
                     debug!("Right Table reference is not available");
@@ -187,21 +188,18 @@ impl MExpr {
             // Lookup selectivity if both tables are resolved
             if let (Some(left), Some(right)) = (left_table, right_table) {
                 if let Some(&selectivity) = SELECTIVITY_MAP.get(&(left.as_str(), right.as_str())) {
-                    return selectivity;
+                    total_selectivity *= selectivity;
                 } else if let Some(&selectivity) =
                     SELECTIVITY_MAP.get(&(right.as_str(), left.as_str()))
                 {
-                    return selectivity;
+                    total_selectivity *= selectivity;
                 } else {
                     debug!("Selectivity not found for tables: ({}, {})", left, right);
                 }
             }
-        } else {
-            debug!("Join condition is empty");
         }
 
-        // Cross join
-        f64::INFINITY
+        total_selectivity
     }
 }
 
