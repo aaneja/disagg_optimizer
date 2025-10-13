@@ -14,6 +14,7 @@ use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::sync::Arc;
 use xxhash_rust::xxh3::Xxh3;
+use crate::cascades::expression_utils::get_unique_equalities;
 
 #[derive(Debug, Clone)]
 pub struct MExpr {
@@ -179,12 +180,12 @@ impl MExpr {
     pub fn get_join_selectivity(join_on: &[(Expr, Expr)]) -> f64 {
         let mut total_selectivity = 1.0;
 
-        for (left_expr, right_expr) in join_on {
+        for (left_expr, right_expr) in get_unique_equalities(join_on) {
             let mut left_table = None;
             let mut right_table = None;
 
             // Parse the left expression to determine the table used
-            if let Expr::Column(column) = left_expr {
+            if let Expr::Column(column) = &left_expr {
                 if let Some(table_ref) = &column.relation {
                     left_table = Some(table_ref.to_string());
                 } else {
@@ -195,7 +196,7 @@ impl MExpr {
             }
 
             // Parse the right expression to determine the table used
-            if let Expr::Column(column) = right_expr {
+            if let Expr::Column(column) = &right_expr {
                 if let Some(table_ref) = &column.relation {
                     right_table = Some(table_ref.to_string());
                 } else {
