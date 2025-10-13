@@ -245,11 +245,11 @@ lazy_static! {
         map.insert(("t1", "t3"), 0.001);
         map.insert(("t1", "t4"), 0.001);
         map.insert(("t1", "t5"), 0.001);
-        map.insert(("t2", "t3"), 0.01);
-        map.insert(("t2", "t4"), 0.01);
-        map.insert(("t2", "t5"), 0.01);
-        map.insert(("t3", "t4"), 0.000001);
-        map.insert(("t3", "t5"), 0.0001);
+        map.insert(("t2", "t3"), 0.001);
+        map.insert(("t2", "t4"), 0.001);
+        map.insert(("t2", "t5"), 0.001);
+        map.insert(("t3", "t4"), 0.001);
+        map.insert(("t3", "t5"), 0.001);
         map.insert(("t4", "t5"), 0.1);
         map
     };

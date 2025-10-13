@@ -14,6 +14,7 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
+use crate::cascades::expression_utils::infer_equalities;
 
 #[derive(Debug)]
 pub struct RuleMatcher {
@@ -116,7 +117,7 @@ impl RuleMatcher {
         right_schema: Arc<DFSchema>,
     ) -> Result<(Vec<(Expr, Expr)>, Option<Expr>)> {
         let exprs = split_conjunction_owned(filter);
-        let inferred = self.infer_equalities(&exprs);
+        let inferred = infer_equalities(&exprs);
         //debug!("Inferred equalities : {:?}", inferred);
 
         let mut accum_join_keys: HashSet<(Expr, Expr)> = HashSet::new();
@@ -407,67 +408,5 @@ impl RuleMatcher {
 
     pub fn test_match(&self, _match_against: &MExpr) -> bool {
         true
-    }
-
-    /// Infers transitive equalities from a list of equality expressions.
-    pub fn infer_equalities(&self, equalities: &Vec<Expr>) -> Vec<Expr> {
-        use std::collections::HashMap;
-
-        // Union-Find data structure to group equal variables
-        let mut parent: HashMap<Expr, Expr> = HashMap::new();
-
-        // Find the root of a variable
-        fn find(parent: &mut HashMap<Expr, Expr>, expr: Expr) -> Expr {
-            if let Some(p) = parent.get(&expr).cloned() { // Clone the key to avoid borrow conflict
-                if p != expr {
-                    let root = find(parent, p);
-                    parent.insert(expr.clone(), root.clone());
-                    return root;
-                }
-            } else {
-                parent.insert(expr.clone(), expr.clone());
-            }
-            expr
-        }
-
-        // Union two variables
-        fn union(parent: &mut HashMap<Expr, Expr>, a: Expr, b: Expr) {
-            let root_a = find(parent, a);
-            let root_b = find(parent, b);
-            if root_a != root_b {
-                parent.insert(root_a, root_b);
-            }
-        }
-
-        // Build the union-find structure
-        for expr in equalities {
-            if let Expr::BinaryExpr(BinaryExpr { left, op: Operator::Eq, right }) = expr {
-                union(&mut parent, *left.clone(), *right.clone());
-            }
-        }
-
-        // Group variables by their root
-        let mut groups: HashMap<Expr, Vec<Expr>> = HashMap::new();
-        let parent_keys: Vec<Expr> = parent.keys().cloned().collect(); // Clone keys to avoid borrow conflict
-        for expr in parent_keys {
-            let root = find(&mut parent, expr.clone());
-            groups.entry(root).or_default().push(expr);
-        }
-
-        // Generate all inferred equalities as BinaryExpr
-        let mut inferred_equalities = Vec::new();
-        for group in groups.values() {
-            for i in 0..group.len() {
-                for j in i + 1..group.len() {
-                    inferred_equalities.push(Expr::BinaryExpr(BinaryExpr {
-                        left: Box::new(group[i].clone()),
-                        op: Operator::Eq,
-                        right: Box::new(group[j].clone()),
-                    }));
-                }
-            }
-        }
-
-        inferred_equalities
     }
 }
