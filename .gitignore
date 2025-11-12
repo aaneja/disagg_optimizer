@@ -3,3 +3,4 @@ output.txt
 *Joins.txt
 *.svg
 perf*
+.vscode/
