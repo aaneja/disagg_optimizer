@@ -1,0 +1,6 @@
+{
+    "github-enterprise.uri": "https://github.ibm.com",
+    "rust-analyzer.check.command": "clippy",
+    "rust-analyzer.check.extraArgs": [],
+    "rust-analyzer.checkOnSave": true
+}

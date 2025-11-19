@@ -117,7 +117,7 @@ impl Group {
             .cheapest_logical_expression
             .as_ref()
             .map(|expr| expr.cost())
-            .unwrap_or(0.0) as f64;
+            .unwrap_or(0.0);
     }
 
     pub fn is_explored(&self) -> bool {

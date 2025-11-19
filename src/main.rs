@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Instant;
-use crate::cascades::cascades::Cascades;
+use crate::cascades::Cascades;
 use crate::cascades::util::get_cheapest_tree;
 mod planprinter;
 mod join_graph;
@@ -114,7 +114,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // println!("{}", logical_plan.display_pg_json());
 
     //New up a Cascades optimizer and optimize the plan
-    let mut cascades = Cascades::new();
+    let mut cascades = Cascades::default();
     let root_group = cascades.gen_group_logical_plan(Rc::new(RefCell::new(logical_plan)));
 
     println!("Memo before starting optimization:");

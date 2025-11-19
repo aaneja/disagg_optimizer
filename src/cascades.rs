@@ -1,6 +1,15 @@
-use super::rulematcher::RuleMatcher;
-use super::group::Group;
-use super::mexpr::MExpr;
+pub mod group;
+pub mod mexpr;
+pub mod rulematcher;
+pub mod sourcenode;
+pub mod operator;
+pub mod util;
+pub mod constants;
+pub mod expression_utils;
+
+use rulematcher::RuleMatcher;
+use group::Group;
+use mexpr::MExpr;
 use std::rc::Rc;
 use std::cell::RefCell;
 use ahash::AHashMap; // Using ahash for better performance
@@ -15,9 +24,9 @@ pub struct Cascades {
 }
 
 impl Cascades {
-    pub fn new() -> Self {
+    pub fn default() -> Self {
         let memo = AHashMap::new();
-        let rulematcher = RuleMatcher::new();
+        let rulematcher = RuleMatcher::default();
 
         Self {
             memo,

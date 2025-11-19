@@ -1,4 +1,4 @@
-use crate::cascades::constants::{
+use super::constants::{
     DEFAULT_ROW_COUNT, FILTER_COST_PER_ROW, JOIN_COST_PER_ROW, PROJECT_COST_PER_ROW,
 };
 
@@ -14,7 +14,7 @@ use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::sync::Arc;
 use xxhash_rust::xxh3::Xxh3;
-use crate::cascades::expression_utils::get_unique_equalities;
+use super::expression_utils::get_unique_equalities;
 
 #[derive(Debug, Clone)]
 pub struct MExpr {

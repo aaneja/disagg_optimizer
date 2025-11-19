@@ -14,17 +14,14 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
-use crate::cascades::expression_utils::infer_equalities;
+use super::expression_utils::infer_equalities;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct RuleMatcher {
     // No fields needed as memo is passed as parameter
 }
 
 impl RuleMatcher {
-    pub fn new() -> Self {
-        Self {}
-    }
 
     /// Check and apply rules to a Group.
     /// 1. Produce logically equivalent MExprs and generate new tasks for them
