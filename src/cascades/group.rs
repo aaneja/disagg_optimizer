@@ -1,7 +1,7 @@
 use super::mexpr::MExpr;
 use super::sourcenode::SourceNode;
 use std::cell::RefCell;
-use std::collections::{HashSet, VecDeque}; // VecDeque for Queue, HashSet for Set
+use std::collections::{HashSet, VecDeque};
 use std::rc::Rc;
 
 #[derive(Debug)]
@@ -40,20 +40,6 @@ impl Group {
         }
     }
 
-    pub fn get_source_node_group(id: String) -> Rc<RefCell<Self>> {
-        Rc::new(RefCell::new(Self {
-            explored: false,
-            min_cost: 0.0,
-            start_expression: None, // Source nodes don't have start expressions
-            cheapest_logical_expression: None,
-            cheapest_physical_expression: None,
-            unexplored_equivalent_logical_mexprs: RefCell::new(VecDeque::new()),
-            equivalent_logical_mexprs: RefCell::new(Vec::new()),
-            physical_manifestations: RefCell::new(HashSet::new()),
-            source_node: Some(SourceNode::new(id)),
-        }))
-    }
-
     pub fn from_mexpr(mexpr: MExpr) -> Rc<RefCell<Self>> {
         let group = Rc::new(RefCell::new(Self::new(mexpr.clone())));
 
@@ -76,7 +62,9 @@ impl Group {
 
     pub fn get_group_row_count(&self) -> u64 {
         if !self.explored {
-            log::debug!("Group is not explored and we using the default row count from start expression");
+            log::debug!(
+                "Group is not explored and we are using the default row count from start expression"
+            );
 
             self.start_expression
                 .as_ref()
@@ -92,7 +80,7 @@ impl Group {
 
     pub fn get_group_cost(&self) -> f64 {
         if !self.explored {
-            log::debug!("Group is not explored and we using the default cost of 0.0");
+            log::debug!("Group is not explored and we are using the default cost of 0.0");
         }
         self.min_cost
     }
@@ -122,5 +110,47 @@ impl Group {
 
     pub fn is_explored(&self) -> bool {
         self.explored
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cascades::mexpr::MExpr;
+    use crate::cascades::test_utils;
+    use datafusion_common::DFSchema;
+    use datafusion_expr::{EmptyRelation, LogicalPlan};
+    use std::sync::Arc;
+
+    #[test]
+    fn test_empty_relation() {
+        let logical_plan = LogicalPlan::EmptyRelation(EmptyRelation {
+            produce_one_row: false,
+            schema: Arc::new(DFSchema::empty()),
+        });
+
+        verify_row_count(logical_plan, 0, 0.0);
+    }
+
+    #[test]
+    fn test_default() {
+        verify_row_count(LogicalPlan::default(), 0, 0.0);
+    }
+
+    #[tokio::test]
+    async fn test_simple_logical_plan() {
+        let logical_plan = test_utils::generate_logical_plan(vec![100, 200, 30, 400]).await;
+        let plan_string = test_utils::custom_print(&logical_plan).expect("unable to print");
+        println!("Plan string {}", plan_string);
+        verify_row_count(logical_plan, 0, 0.0);
+    }
+
+    fn verify_row_count(logical_plan: LogicalPlan, expected_row_count: u64, expected_cost: f64) {
+        let mexpr = MExpr::build_with_node(Rc::new(RefCell::new(logical_plan)), vec![]);
+        let mut group = Group::new(mexpr.clone());
+        let row_count = group.get_group_row_count();
+        println!("Group row count: {}", row_count);
+        assert_eq!(row_count, expected_row_count);
+        assert_eq!(group.get_group_cost(), expected_cost);
     }
 }

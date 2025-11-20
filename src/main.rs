@@ -15,33 +15,7 @@ mod join_graph;
 
 pub mod cascades;
 
-use planprinter::PlanStringBuilder;
-
-async fn setup_tables(table_count: usize) -> Result<SessionContext, Box<dyn std::error::Error>> {
-    // Create a DataFusion context
-    let ctx = SessionContext::new();
-
-    // Step 1: Dynamically create tables with integer columns (a1, a2, ..., an)
-    for i in 1..=table_count {
-        let column_name = format!("a{}", i);
-        let schema = Arc::new(Schema::new(vec![
-            Field::new(&column_name, DataType::Int32, false),
-        ]));
-        let data = Int32Array::from((1..=5).map(|x| (x * i) as i32).collect::<Vec<_>>());
-        let batch = RecordBatch::try_new(schema.clone(), vec![Arc::new(data)])?;
-        ctx.register_batch(&format!("t{}", i), batch)?;
-    }
-
-    Ok(ctx)
-}
-
-
-// Custom print method that uses the TreeNodeVisitor implementation
-fn custom_print(plan: &LogicalPlan) -> Result<String, Box<dyn std::error::Error>> {
-    let mut builder = PlanStringBuilder::new();
-    plan.visit(&mut builder)?;
-    Ok(builder.get_output())
-}
+use crate::cascades::test_utils;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -59,49 +33,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Creating DataFusion logical plan with {} tables and joins...", table_count);
 
-    let ctx = setup_tables(table_count).await?;
-
     // Step 2: Dynamically create a logical plan for a left-deep join tree
-    let mut logical_plan = None;
-
-    for i in 1..=table_count {
-        let table_name = format!("t{}", i);
-        let table = ctx.table(&table_name).await?;
-
-        let mut table_scan = match table.logical_plan() {
-            LogicalPlan::TableScan(scan) => scan.clone(),
-            _ => panic!("Expected a TableScan node"),
-        };
-
-        table_scan.fetch = Some(table_row_counts[i - 1]);
-
-        if let Some(plan) = logical_plan {
-            let left_column = format!("a{}", i - 1);
-            let right_column = format!("a{}", i);
-            logical_plan = Some(
-                LogicalPlanBuilder::from(plan)
-                    .join(LogicalPlan::TableScan(table_scan), JoinType::Inner, (vec![left_column], vec![right_column]), None)?
-                    .build()?,
-            );
-        } else {
-            logical_plan = Some(LogicalPlan::TableScan(table_scan));
-        }
-    }
-
-    // Add a projection to select a constant value (e.g., SELECT 1)
-    let logical_plan = LogicalPlanBuilder::from(logical_plan.unwrap())
-        .project(vec![lit(1)])? // SELECT 1
-        .build()?;
+    let logical_plan = test_utils::generate_logical_plan(table_row_counts).await;
 
     // Print the logical plan using display_indent()
     // println!("Logical Plan for complex joins:");
     // println!("{}", logical_plan.display_indent());
-    
+
     // Print using custom_print method
     println!("Formatted plan:");
-    let custom_output = custom_print(&logical_plan)?;
+    let custom_output = test_utils::custom_print(&logical_plan)?;
     println!("{}", custom_output);
-    
+
     // Extract and display join graph
     // println!("\nJoin Graph:");
     // let join_graph = JoinGraph::from_plan(&logical_plan)?;
@@ -110,7 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // for (i, source) in join_graph.sources.iter().enumerate() {
     //     println!("Source {}: {:?}", i, std::mem::discriminant(source));
     // }
-    
+
     // println!("{}", logical_plan.display_pg_json());
 
     //New up a Cascades optimizer and optimize the plan
@@ -124,7 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     cascades.optimize(root_group.clone());
     let duration = start_time.elapsed();
     println!("Optimization completed in: {:.2?}", duration);
-    
+
     //Print memo stats
     println!("Memo stats");
     cascades.print_memo_stats();

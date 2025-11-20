@@ -6,6 +6,7 @@ pub mod operator;
 pub mod util;
 pub mod constants;
 pub mod expression_utils;
+pub mod test_utils;
 
 use rulematcher::RuleMatcher;
 use group::Group;
