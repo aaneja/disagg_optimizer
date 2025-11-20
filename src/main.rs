@@ -1,12 +1,5 @@
-use datafusion::arrow::array::{Int32Array, RecordBatch};
-use datafusion::arrow::datatypes::{DataType, Field, Schema};
-use datafusion::prelude::*;
-use datafusion_expr::logical_plan::LogicalPlanBuilder;
-use datafusion_expr::logical_plan::LogicalPlan;
-use datafusion_common::tree_node::TreeNode;
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::Arc;
 use std::time::Instant;
 use crate::cascades::Cascades;
 use crate::cascades::util::get_cheapest_tree;

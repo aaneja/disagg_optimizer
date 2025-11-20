@@ -4,17 +4,17 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-datafusion = "50.1.0"
-datafusion-expr = "50.1.0"
-datafusion-common = "50.1.0"
-tokio = { version = "1.47.1", features = ["full"] }
+datafusion = "51.0.0"
+datafusion-expr = "51.0.0"
+datafusion-common = "51.0.0"
+tokio = { version = "1.48.0", features = ["full"] }
 serde = { version = "1.0.228", features = ["derive"] }
 ahash = "0.8.12"
 murmur3 = "0.5.2"
 once_cell = "1.21.3"
 xxhash-rust = { version = "0.8.15", features = ["xxh3"] }
-datafusion-optimizer = "50.1.0"
-datafusion-expr-common = "50.1.0"
+datafusion-optimizer = "51.0.0"
+datafusion-expr-common = "51.0.0"
 debug_print = "1.0.0"
 log = "0.4.28"
 env_logger = "0.11.8"
